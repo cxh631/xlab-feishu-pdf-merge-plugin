@@ -124,7 +124,7 @@ async function getFields() {
   return { table, reason, category, header, approval, source, batch, result };
 }
 
-async function getRowNumbers(table: Awaited<ReturnType<typeof bitable.base.getActiveTable>>, view: IGridView, recordIds: string[]) {
+async function getOrderedSelection(table: Awaited<ReturnType<typeof bitable.base.getActiveTable>>, view: IGridView, selectedRecordIds: string[]) {
   const orderedRecordIds: string[] = [];
   let pageToken: number | undefined;
   do {
@@ -137,10 +137,18 @@ async function getRowNumbers(table: Awaited<ReturnType<typeof bitable.base.getAc
     pageToken = page.hasMore ? page.pageToken : undefined;
   } while (pageToken !== undefined);
 
-  return recordIds.map((recordId) => {
-    const index = orderedRecordIds.indexOf(recordId);
-    return index >= 0 ? String(index + 1) : recordId;
-  });
+  const selectedSet = new Set(selectedRecordIds);
+  const recordIds = orderedRecordIds.filter((recordId) => selectedSet.has(recordId));
+  const missingRecordIds = selectedRecordIds.filter((recordId) => !recordIds.includes(recordId));
+  recordIds.push(...missingRecordIds);
+
+  return {
+    recordIds,
+    rowNumbers: recordIds.map((recordId) => {
+      const index = orderedRecordIds.indexOf(recordId);
+      return index >= 0 ? String(index + 1) : recordId;
+    }),
+  };
 }
 
 async function readSelection(): Promise<SelectionState> {
@@ -150,9 +158,9 @@ async function readSelection(): Promise<SelectionState> {
     throw new Error("请在表格视图中使用本插件");
   }
 
-  const recordIds = await view.getSelectedRecordIdList();
-  if (recordIds.length < 2) throw new Error("请至少勾选两条记录");
-  const rowNumbers = await getRowNumbers(table, view, recordIds);
+  const selectedRecordIds = await view.getSelectedRecordIdList();
+  if (selectedRecordIds.length < 2) throw new Error("请至少勾选两条记录");
+  const { recordIds, rowNumbers } = await getOrderedSelection(table, view, selectedRecordIds);
 
   const rows = await Promise.all(recordIds.map(async (recordId) => {
     const [reasonText, categoryText, headerText, approvalText, files] = await Promise.all([
