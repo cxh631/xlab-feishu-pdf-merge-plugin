@@ -4,6 +4,7 @@ import {
   bitable,
   type IAttachmentField,
   type IGridView,
+  type ITextField,
 } from "@lark-base-open/js-sdk";
 import { PDFDocument } from "pdf-lib";
 import "./style.css";
@@ -14,6 +15,7 @@ const FIELD = {
   header: "发票抬头",
   approval: "审批",
   source: "发票+订单截图+支付截图",
+  batch: "PDF合并批次",
   result: "合并后材料PDF",
 } as const;
 
@@ -67,6 +69,7 @@ type SelectionState = {
   category: string;
   header: string;
   reasons: string[];
+  rowNumbers: string[];
   fileCount: number;
 };
 
@@ -102,12 +105,13 @@ function buildFilename(header: string, category: string): string {
 
 async function getFields() {
   const table = await bitable.base.getActiveTable();
-  const [reason, category, header, approval, source, result] = await Promise.all([
+  const [reason, category, header, approval, source, batch, result] = await Promise.all([
     table.getFieldByName(FIELD.reason),
     table.getFieldByName(FIELD.category),
     table.getFieldByName(FIELD.header),
     table.getFieldByName(FIELD.approval),
     table.getFieldByName<IAttachmentField>(FIELD.source),
+    table.getFieldByName<ITextField>(FIELD.batch),
     table.getFieldByName<IAttachmentField>(FIELD.result),
   ]);
 
@@ -117,7 +121,26 @@ async function getFields() {
   if (await result.getType() !== FieldType.Attachment) {
     throw new Error(`“${FIELD.result}”必须是附件字段`);
   }
-  return { table, reason, category, header, approval, source, result };
+  return { table, reason, category, header, approval, source, batch, result };
+}
+
+async function getRowNumbers(table: Awaited<ReturnType<typeof bitable.base.getActiveTable>>, view: IGridView, recordIds: string[]) {
+  const orderedRecordIds: string[] = [];
+  let pageToken: number | undefined;
+  do {
+    const page = await table.getRecordIdListByPage({
+      pageSize: 200,
+      pageToken,
+      viewId: view.id,
+    });
+    orderedRecordIds.push(...page.recordIds);
+    pageToken = page.hasMore ? page.pageToken : undefined;
+  } while (pageToken !== undefined);
+
+  return recordIds.map((recordId) => {
+    const index = orderedRecordIds.indexOf(recordId);
+    return index >= 0 ? String(index + 1) : recordId;
+  });
 }
 
 async function readSelection(): Promise<SelectionState> {
@@ -129,6 +152,7 @@ async function readSelection(): Promise<SelectionState> {
 
   const recordIds = await view.getSelectedRecordIdList();
   if (recordIds.length < 2) throw new Error("请至少勾选两条记录");
+  const rowNumbers = await getRowNumbers(table, view, recordIds);
 
   const rows = await Promise.all(recordIds.map(async (recordId) => {
     const [reasonText, categoryText, headerText, approvalText, files] = await Promise.all([
@@ -174,6 +198,7 @@ async function readSelection(): Promise<SelectionState> {
     category: rows[0].category,
     header: rows[0].header,
     reasons: rows.map((row) => row.reason),
+    rowNumbers,
     fileCount: files.length,
   };
 }
@@ -210,7 +235,7 @@ async function mergeSelected() {
   setStatus("正在校验并下载 PDF……");
   try {
     const latest = await readSelection();
-    const { source, result } = await getFields();
+    const { source, batch, result } = await getFields();
     const output = await PDFDocument.create();
     let totalBytes = 0;
     let mergedFiles = 0;
@@ -244,6 +269,7 @@ async function mergeSelected() {
     const filename = buildFilename(latest.header, latest.category);
     const file = new File([buffer], filename, { type: "application/pdf" });
     await result.setValue(latest.recordIds[0], file);
+    await batch.setValue(latest.recordIds[0], `${latest.rowNumbers.join(" ")}合并`);
     await bitable.ui.showToast({ toastType: ToastType.success, message: "PDF 已合并并写回" });
     setStatus(`完成：${mergedFiles} 个 PDF 已合并为 ${filename}`, "success");
     state = latest;
