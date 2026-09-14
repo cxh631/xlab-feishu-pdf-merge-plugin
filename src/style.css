@@ -1,0 +1,71 @@
+:root {
+  color: #1f2329;
+  background: #f5f6f7;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 280px; }
+button { font: inherit; }
+
+.shell {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 24px 18px 28px;
+}
+
+header { margin-bottom: 18px; }
+.eyebrow { color: #3370ff; font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+h1 { margin: 7px 0 8px; font-size: 24px; line-height: 1.25; }
+header p, .footnote { color: #646a73; font-size: 13px; line-height: 1.65; }
+header p { margin: 0; }
+
+.card {
+  border: 1px solid #dee0e3;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(31 35 41 / 4%);
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.label { display: block; color: #8f959e; font-size: 12px; margin-bottom: 4px; }
+.summary strong { font-size: 15px; }
+
+.secondary, .primary {
+  border-radius: 8px;
+  border: 0;
+  cursor: pointer;
+  transition: opacity .15s ease, transform .15s ease;
+}
+.secondary { padding: 8px 12px; color: #3370ff; background: #edf3ff; }
+.primary { width: 100%; padding: 12px 16px; color: white; background: #3370ff; font-weight: 700; }
+button:not(:disabled):active { transform: translateY(1px); }
+button:disabled { cursor: not-allowed; opacity: .45; }
+
+.detail { margin-top: 12px; padding: 14px 16px; font-size: 13px; line-height: 1.55; }
+.detail.muted { color: #8f959e; }
+dl { margin: 0; }
+dl div { display: grid; grid-template-columns: 76px 1fr; gap: 10px; margin-bottom: 7px; }
+dt { color: #8f959e; }
+dd { margin: 0; font-weight: 600; }
+ol { margin: 11px 0 0; padding-left: 21px; color: #646a73; }
+li + li { margin-top: 4px; }
+
+.rules { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
+.rules span { padding: 8px 9px; border-radius: 7px; color: #2b8a3e; background: #eef9f0; font-size: 12px; }
+.status { min-height: 22px; margin-top: 12px; color: #646a73; font-size: 13px; line-height: 1.6; }
+.status.success { color: #2b8a3e; }
+.status.error { color: #d4380d; }
+.footnote { margin: 8px 2px 0; font-size: 12px; }
+
+@media (max-width: 360px) {
+  .rules { grid-template-columns: 1fr; }
+}
