@@ -29,6 +29,7 @@ const MAX_FILES = 30;
 const MAX_PAGES = 30;
 const MAX_TOTAL_BYTES = 80 * 1024 * 1024;
 const SELECTION_POLL_MS = 800;
+const VIEW_ORDER_CACHE_MS = 30_000;
 
 const app = document.querySelector<HTMLElement>("#app");
 if (!app) throw new Error("页面初始化失败");
@@ -89,6 +90,10 @@ let lastSelectionSignature = "";
 let pollingSelection = false;
 let merging = false;
 const pdfCache = new Map<string, CachedPdf>();
+const pdfPromiseCache = new Map<string, Promise<CachedPdf>>();
+const viewOrderCache = new Map<string, { recordIds: string[]; expiresAt: number }>();
+let fieldsCache: Awaited<ReturnType<typeof resolveFields>> | null = null;
+let refreshTimer: number | undefined;
 
 function setStatus(message: string, kind: "info" | "success" | "error" = "info") {
   status.className = `status ${kind}`;
@@ -121,8 +126,7 @@ function pdfCacheKey(recordId: string, attachment: IOpenAttachment): string {
   return `${recordId}:${attachment.token}:${attachment.size}:${attachment.timeStamp}`;
 }
 
-async function getFields() {
-  const table = await bitable.base.getActiveTable();
+async function resolveFields(table: Awaited<ReturnType<typeof bitable.base.getActiveTable>>) {
   const [reason, category, header, approval, earliestDate, latestDate, amount, source, batch, result] = await Promise.all([
     table.getFieldByName(FIELD.reason),
     table.getFieldByName(FIELD.category),
@@ -140,18 +144,33 @@ async function getFields() {
   return { table, reason, category, header, approval, earliestDate, latestDate, amount, source, batch, result };
 }
 
+async function getFields() {
+  const table = await bitable.base.getActiveTable();
+  if (fieldsCache?.table.id === table.id) return fieldsCache;
+  fieldsCache = await resolveFields(table);
+  return fieldsCache;
+}
+
 async function getOrderedSelection(
   table: Awaited<ReturnType<typeof bitable.base.getActiveTable>>,
   view: IGridView,
   selectedRecordIds: string[],
 ) {
-  const orderedRecordIds: string[] = [];
-  let pageToken: number | undefined;
-  do {
-    const page = await table.getRecordIdListByPage({ pageSize: 200, pageToken, viewId: view.id });
-    orderedRecordIds.push(...page.recordIds);
-    pageToken = page.hasMore ? page.pageToken : undefined;
-  } while (pageToken !== undefined);
+  const cacheKey = `${table.id}:${view.id}`;
+  const cachedOrder = viewOrderCache.get(cacheKey);
+  let orderedRecordIds: string[];
+  if (cachedOrder && cachedOrder.expiresAt > Date.now()) {
+    orderedRecordIds = cachedOrder.recordIds;
+  } else {
+    orderedRecordIds = [];
+    let pageToken: number | undefined;
+    do {
+      const page = await table.getRecordIdListByPage({ pageSize: 200, pageToken, viewId: view.id });
+      orderedRecordIds.push(...page.recordIds);
+      pageToken = page.hasMore ? page.pageToken : undefined;
+    } while (pageToken !== undefined);
+    viewOrderCache.set(cacheKey, { recordIds: orderedRecordIds, expiresAt: Date.now() + VIEW_ORDER_CACHE_MS });
+  }
 
   const selectedSet = new Set(selectedRecordIds);
   const recordIds = orderedRecordIds.filter((recordId) => selectedSet.has(recordId));
@@ -169,13 +188,20 @@ async function loadPdf(recordId: string, attachment: IOpenAttachment, url: strin
   const key = pdfCacheKey(recordId, attachment);
   const cached = pdfCache.get(key);
   if (cached) return cached;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`附件下载失败：${attachment.name}`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  const pdf = await PDFDocument.load(bytes, { ignoreEncryption: false });
-  const loaded = { bytes, pageCount: pdf.getPageCount() };
-  pdfCache.set(key, loaded);
-  return loaded;
+  const pending = pdfPromiseCache.get(key);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`附件下载失败：${attachment.name}`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const pdf = await PDFDocument.load(bytes, { ignoreEncryption: false });
+    const loaded = { bytes, pageCount: pdf.getPageCount() };
+    pdfCache.set(key, loaded);
+    return loaded;
+  })().finally(() => pdfPromiseCache.delete(key));
+  pdfPromiseCache.set(key, request);
+  return request;
 }
 
 async function getRecordPdfInfo(recordId: string, source: IAttachmentField, attachments: IOpenAttachment[]) {
@@ -339,7 +365,8 @@ async function pollSelection() {
     const signature = `${table.id}:${view.id}:${[...selectedIds].sort().join(",")}`;
     if (signature !== lastSelectionSignature) {
       lastSelectionSignature = signature;
-      void refreshSelection();
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => void refreshSelection(), 180);
     }
   } catch {
     // 切换表格或视图时可能短暂无法读取，下一轮自动重试。
