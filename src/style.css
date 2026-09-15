@@ -56,8 +56,13 @@ dl { margin: 0; }
 dl div { display: grid; grid-template-columns: 76px 1fr; gap: 10px; margin-bottom: 7px; }
 dt { color: #8f959e; }
 dd { margin: 0; font-weight: 600; }
+.filename { overflow-wrap: anywhere; font-size: 12px; }
 ol { margin: 11px 0 0; padding-left: 21px; color: #646a73; }
 li + li { margin-top: 4px; }
+.record-list li { padding: 7px 0; }
+.record-list strong { color: #1f2329; margin-right: 8px; }
+.record-list span { color: #3370ff; font-weight: 600; }
+.record-list small { display: block; margin-top: 2px; color: #8f959e; }
 
 .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
 .rules span { padding: 8px 9px; border-radius: 7px; color: #2b8a3e; background: #eef9f0; font-size: 12px; }
