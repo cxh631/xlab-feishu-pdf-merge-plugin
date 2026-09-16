@@ -12,7 +12,7 @@ header p { margin:0 0 16px; }
 .index-card strong { display:block; font-size:14px; }
 .index-card small { color:#8f959e; }
 .form { margin-top:12px; }
-.fields { display:grid; grid-template-columns:1.4fr 1fr; gap:10px; }
+.fields { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:10px; }
 label { color:#646a73; font-size:12px; }
 input { width:100%; margin-top:5px; padding:10px 11px; border:1px solid #d0d3d6; border-radius:8px; outline:none; }
 input:focus { border-color:#3370ff; box-shadow:0 0 0 2px #3370ff20; }
