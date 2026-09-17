@@ -47,7 +47,7 @@ app.innerHTML = `
     </div>
     <div id="selection-detail" class="card detail muted">请在当前表格左侧勾选记录。</div>
     <div class="rules">
-      <span>✓ 合并后不超过30页</span><span>✓ 审批均为“同意”</span>
+      <span>✓ 实时统计合并页数</span><span>✓ 审批均为“同意”</span>
       <span>✓ 发票抬头一致</span><span>✓ 报销类目一致</span>
     </div>
     <button id="merge" class="primary" type="button" disabled>合并并写回第一条记录</button>
@@ -114,12 +114,20 @@ function formatDate(timestamp: number): string {
   return `${values.year}.${values.month}.${values.day}`;
 }
 
+function formatFilenameDate(timestamp: number): string {
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date(timestamp));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.month}.${values.day}`;
+}
+
 function cleanFilenamePart(value: string): string {
   return value.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, "").slice(0, 40);
 }
 
 function buildFilename(selection: SelectionState): string {
-  return `${cleanFilenamePart(selection.header)}+${cleanFilenamePart(selection.category)}+【${formatDate(selection.earliestDate)}-${formatDate(selection.latestDate)}】${selection.totalAmount.toFixed(2)}元.pdf`;
+  return `${cleanFilenamePart(selection.header)}+${cleanFilenamePart(selection.category)}+【${formatFilenameDate(selection.earliestDate)}-${formatFilenameDate(selection.latestDate)}】${selection.totalAmount.toFixed(2)}元.pdf`;
 }
 
 function pdfCacheKey(recordId: string, attachment: IOpenAttachment): string {
@@ -277,7 +285,7 @@ async function refreshSelection() {
     const nextState = await readSelection();
     if (version !== refreshVersion) return;
     state = nextState;
-    selectedCount.textContent = `${state.recordIds.length} 条记录 · ${state.fileCount} 个 PDF · ${state.totalPages}/${MAX_PAGES} 页`;
+    selectedCount.textContent = `${state.recordIds.length} 条记录 · ${state.fileCount} 个 PDF · 共 ${state.totalPages} 页`;
     detail.classList.remove("muted");
     detail.innerHTML = `
       <dl>
@@ -291,10 +299,11 @@ async function refreshSelection() {
         <li><strong>第${safeText(record.rowNumber)}条</strong><span>${record.pdfCount}个 PDF · ${record.pageCount}页</span><small>${safeText(record.reason)}</small></li>
       `).join("")}</ol>`;
 
-    if (state.totalPages > MAX_PAGES) {
-      setStatus(`当前共${state.totalPages}页，超过30页，请减少勾选记录。`, "error");
-    } else if (state.recordIds.length < 2) {
+    if (state.recordIds.length < 2) {
       setStatus(`当前材料共${state.totalPages}页，请继续勾选需要合并的记录。`);
+    } else if (state.totalPages > MAX_PAGES) {
+      mergeButton.disabled = false;
+      setStatus(`当前共${state.totalPages}页，超过建议的30页，但仍可继续合并。`);
     } else {
       mergeButton.disabled = false;
       setStatus(`页数校验通过：共${state.totalPages}页，可以合并。`, "success");
@@ -317,7 +326,6 @@ async function mergeSelected() {
   try {
     const latest = await readSelection();
     if (latest.recordIds.length < 2) throw new Error("请至少勾选两条记录");
-    if (latest.totalPages > MAX_PAGES) throw new Error(`合并后共${latest.totalPages}页，超过30页限制`);
     const { source, batch, result } = await getFields();
     const output = await PDFDocument.create();
     let mergedFiles = 0;
@@ -350,7 +358,7 @@ async function mergeSelected() {
   } finally {
     merging = false;
     refreshButton.disabled = false;
-    mergeButton.disabled = !state || state.recordIds.length < 2 || state.totalPages > MAX_PAGES;
+    mergeButton.disabled = !state || state.recordIds.length < 2;
   }
 }
 
